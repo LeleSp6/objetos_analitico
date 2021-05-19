@@ -1,0 +1,233 @@
+
+
+
+
+
+set nocount on
+declare @cont int = 1, @qt_Tab int, @base_name varchar(50), @sql_text nvarchar(max), @sql_text_2 NVARCHAR(MAX)
+
+
+
+
+if OBJECT_ID('tempdb..#aux_databses') is not null
+begin
+drop table #aux_databses
+end
+
+select name , id = IDENTITY(int)  into #aux_databses from sys.databases
+where name not in (
+'master'
+,'tempdb'
+,'model'
+,'msdb'
+
+)
+
+
+
+if OBJECT_ID('tempdb..##aux_select') is not null
+begin
+drop table ##aux_select
+end
+
+
+create table ##aux_select
+(
+[schema]		varchar(500)     COLLATE SQL_Latin1_General_CP850_CI_AS
+,[Type]         varchar(500)	 COLLATE SQL_Latin1_General_CP850_CI_AS
+,[server_name] varchar(500)		 COLLATE SQL_Latin1_General_CP850_CI_AS
+,[sql_version] varchar(500)		 COLLATE SQL_Latin1_General_CP850_CI_AS
+,Numero_Linhas     INT 
+,[data]   INT
+,[index_size]   INT
+,[tamanho_total] INT
+,[nm_objeto]       VARCHAR(500) COLLATE SQL_Latin1_General_CP850_CI_AS
+,qtd_col       int 
+,qtd_index     int 
+,[database]    varchar(500)     COLLATE SQL_Latin1_General_CP850_CI_AS
+
+, id int identity
+)
+
+                
+			    
+			    
+			    
+
+set @qt_Tab = (select count('') from #aux_databses)
+
+while @cont <= @qt_Tab
+begin
+
+select @base_name =  name from #aux_databses where id = @cont
+
+set @sql_text = 'insert into  ##aux_select' + char(13)
++ 'select 
+	[schema] =  b.name
+	,[Type]  =  case 
+	            when a.type  = ''U'' then  ''table''
+	            when a.type  = ''p'' then  ''Procedure''
+				when a.type  = ''FN'' then ''Function scalar''
+				when a.type  = ''TF'' then ''Function inline table value''
+				when a.type  = ''IF'' then ''Function table value'' end				
+			    ,[server_name]     = @@SERVERNAME
+	            ,[sql_version]     =  left(@@VERSION,26)
+				,Numero_Linhas     =  CAST(NULL AS INT)
+				,[data]            = CAST(NULL AS INT)
+				,[index_size]      = CAST(NULL AS INT)
+				,[tamanho_total]   = CAST(NULL AS INT)
+				
+					
+                ,[nm_objeto] =  a.name 
+				,d.qtd_col
+				,D.QTD_INDEX
+				,[database]    = '+''''+@base_name+''''+'
+	from ' +@base_name+ '.sys.objects  a
+	 join ' +@base_name+ '.sys.schemas b
+	on a.schema_id =  b.schema_id
+	outer apply (
+	select
+	(
+	select count('''') as qtd_col  from '+@base_name+ '.sys.columns b
+	where a.object_id =  b.object_id
+	) as qtd_col
+	,
+	(
+	SELECT COUNT(F.INDEX_ID) AS QTD_INDEX  
+	FROM '+@base_name+'.SYS.indexes  F
+	WHERE a.object_id =  F.object_id
+	) AS QTD_INDEX
+	) as D
+	where a.type in (''U'',''p'',''FN'',''TF'',''IF'') '
+
+				exec sp_executesql @stmp = @sql_text
+				--print @sql_text
+
+
+
+				
+
+if OBJECT_ID('tempdb..##AUX_TM_TABLES') is not null
+begin
+drop table ##AUX_TM_TABLES
+end
+
+
+--CREATE TABLE  ##AUX_TM_TABLES (
+--DATA_BASE          varchar(500)     COLLATE SQL_Latin1_General_CP850_CI_AS
+--,Esquema_Nome	   varchar(500)     COLLATE SQL_Latin1_General_CP850_CI_AS
+--,Tabela_Nome	   varchar(500)     COLLATE SQL_Latin1_General_CP850_CI_AS
+--,Numero_Linhas	   INT 
+--,Espaco_KB_Total   INT 
+--,Espaco_KB_Usado   INT 
+--,Espaco_KB_Sem_Uso INT 
+--)
+SET @sql_text_2 = 	
+
+'select
+   b.name as  table_name ,
+   c.name as [schema],
+   DATA_BASE = '+''''+@base_name+ ''''+',
+  reserved_page_count = ltrim(STR(SUM (reserved_page_count) * 8, 15, 0)),--SUM (reserved_page_count),  
+  used_page_count = SUM (used_page_count),  
+  [data] = ltrim(rtrim(str(SUM(  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   )* 8, 15, 0))),  
+  Numero_Linhas = SUM (  
+   CASE  
+    WHEN (index_id < 2) THEN row_count  
+    ELSE 0  
+   END  
+   )  ,
+    index_size = LTRIM (STR ((CASE WHEN SUM (used_page_count) >  SUM (  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   ) THEN (SUM (used_page_count) -  SUM (  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   )) ELSE 0 END) * 8, 15, 0) ),
+   tamanho_total = cast(rtrim(ltrim(str(SUM(  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   )* 8, 15, 0) )) as  float)
+   +  
+   cast(rtrim(LTRIM(STR((CASE WHEN rtrim(ltrim(SUM(used_page_count))) >  SUM (  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   ) THEN (rtrim(ltrim(SUM(used_page_count))) -  SUM (  
+   CASE  
+    WHEN (index_id < 2) THEN (in_row_data_page_count + lob_used_page_count + row_overflow_used_page_count)  
+    ELSE 0  
+   END  
+   )) ELSE 0 END) * 8, 15, 0) )) as float)
+   
+   into ##AUX_TM_TABLES
+ FROM ' +@base_name+'.sys.dm_db_partition_stats   a
+ inner join '+@base_name+ '.sys.objects b
+ on a.object_id = b.object_id
+ inner join '+@base_name+'.sys.schemas c
+ on b.schema_id=  c.schema_id
+ where b.type = ''u''
+  group by
+   b.name, c.name'	
+				exec sp_executesql @stmp = @sql_text_2
+				--PRINT @sql_text_2
+
+
+
+
+				UPDATE A
+                  SET
+				 a.Numero_Linhas    = b.Numero_Linhas  
+				,a.[data]          = b.[data]         
+				,a.[index_size]    = b.[index_size]   
+				,a.[tamanho_total] = b.[tamanho_total]
+				FROM  ##aux_select A 
+				INNER JOIN ##AUX_TM_TABLES B
+				ON A.[nm_objeto] = B.table_name  COLLATE SQL_Latin1_General_CP850_CI_AS
+				AND A.[schema]   = B.[schema] COLLATE SQL_Latin1_General_CP850_CI_AS
+				AND A.[database] = B.DATA_BASE	  COLLATE SQL_Latin1_General_CP850_CI_AS
+
+
+				delete from #aux_databses where id = @cont
+				delete from #aux_databses  where id = @cont
+				set @cont +=1
+end
+
+
+
+
+
+select 
+ [server_name]	
+,[database]	
+,[schema]
+,[Type]	
+,[nm_objeto]
+,[sql_version]	
+,[Numero_Linhas]	
+,cast([data]         as float) / 1024 as [data_em_mb]
+,cast([index_size]   as float) / 1024 as [index_size_em_mb]
+,cast([tamanho_total]as float) / 1024 as [tamanho_total_em_mb]
+--
+,cast([data]          as float)/(1024*1024)  as [data_em_gb]
+,cast([index_size]    as float)/(1024*1024)  as [index_size_em_gb]
+,cast([tamanho_total] as float)/(1024*1024)  as [tamanho_total_em_gb]
+,qtd_col
+,qtd_index
+from ##aux_select 
+order by 1,2,3,4 desc,cast([tamanho_total] as float)/(1024*1024)desc 
+
+
+
